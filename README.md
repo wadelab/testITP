@@ -49,7 +49,7 @@ An interactive web-based interface that displays recent Orca (killer whale) sigh
 
 ### API Information
 - **Data Source**: iNaturalist API v1
-- **Species**: Orcinus orca (Taxon ID: 41630)
+- **Species**: Orcinus orca (Taxon ID: 47664)
 - **Data Quality**: Research grade and needs ID observations
 - **Geolocation**: Only observations with GPS coordinates
 
