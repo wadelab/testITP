@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orca (Killer Whale) Sightings Map</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            position: relative;
+        }
+        
+        #header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        #header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        #controls {
+            background: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        #controls label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        #controls input, #controls button {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        #controls button {
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        #controls button:hover {
+            background: #5568d3;
+        }
+        
+        #controls button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        #map {
+            height: calc(100vh - 160px);
+            width: 100%;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px 50px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 2000;
+            display: none;
+            text-align: center;
+        }
+        
+        #loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .leaflet-popup-content {
+            margin: 15px;
+            min-width: 250px;
+        }
+        
+        .popup-image {
+            width: 100%;
+            max-height: 200px;
+            object-fit: cover;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .popup-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        
+        .popup-detail {
+            font-size: 13px;
+            margin: 5px 0;
+            color: #666;
+        }
+        
+        .popup-detail strong {
+            color: #333;
+        }
+        
+        .popup-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        .popup-link:hover {
+            background: #5568d3;
+        }
+        
+        #stats {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #ddd;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .orca-icon {
+            background-color: #4a5568;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🐋 Orca (Killer Whale) Sightings Map</h1>
+        <p>Interactive map showing recent Orcinus orca observations from iNaturalist</p>
+    </div>
+    
+    <div id="controls">
+        <label for="results-limit">Results:</label>
+        <input type="number" id="results-limit" value="100" min="10" max="200" step="10">
+        <button id="refresh-btn" onclick="loadOrcaSightings()">🔄 Refresh Data</button>
+        <span id="status">Ready to load data</span>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div id="stats"></div>
+    
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading Orca sightings...</p>
+    </div>
+    
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    
+    <script>
+        // Initialize the map
+        let map = L.map('map').setView([20, 0], 2);
+        let markers = [];
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Custom Orca icon
+        const orcaIcon = L.divIcon({
+            className: 'orca-icon',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+            popupAnchor: [0, -10],
+            html: '🐋'
+        });
+        
+        // Function to load Orca sightings from iNaturalist API
+        async function loadOrcaSightings() {
+            const loadingDiv = document.getElementById('loading');
+            const refreshBtn = document.getElementById('refresh-btn');
+            const statusSpan = document.getElementById('status');
+            const statsDiv = document.getElementById('stats');
+            const resultsLimit = document.getElementById('results-limit').value;
+            
+            // Clear existing markers
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+            
+            // Show loading
+            loadingDiv.classList.add('active');
+            refreshBtn.disabled = true;
+            statusSpan.textContent = 'Loading...';
+            
+            try {
+                // iNaturalist API endpoint for Orcinus orca (taxon_id: 41630)
+                // Using the observations endpoint with geolocation
+                const apiUrl = `https://api.inaturalist.org/v1/observations?taxon_id=41630&has[]=geo&order=desc&order_by=observed_on&per_page=${resultsLimit}&quality_grade=research,needs_id`;
+                
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const observations = data.results;
+                
+                if (observations.length === 0) {
+                    statusSpan.textContent = 'No sightings found';
+                    statsDiv.textContent = 'No observations available';
+                    return;
+                }
+                
+                // Add markers for each observation
+                let validSightings = 0;
+                observations.forEach(obs => {
+                    if (obs.location) {
+                        const [lat, lon] = obs.location.split(',').map(Number);
+                        
+                        // Create popup content
+                        const popupContent = createPopupContent(obs);
+                        
+                        // Create marker
+                        const marker = L.marker([lat, lon], { icon: orcaIcon })
+                            .bindPopup(popupContent, { maxWidth: 300 })
+                            .addTo(map);
+                        
+                        markers.push(marker);
+                        validSightings++;
+                    }
+                });
+                
+                // Update stats
+                const dates = observations
+                    .filter(obs => obs.observed_on)
+                    .map(obs => new Date(obs.observed_on));
+                
+                const latestDate = dates.length > 0 ? new Date(Math.max(...dates)) : null;
+                const oldestDate = dates.length > 0 ? new Date(Math.min(...dates)) : null;
+                
+                statsDiv.innerHTML = `
+                    <strong>Sightings loaded:</strong> ${validSightings} observations | 
+                    <strong>Date range:</strong> ${oldestDate ? oldestDate.toLocaleDateString() : 'N/A'} - 
+                    ${latestDate ? latestDate.toLocaleDateString() : 'N/A'}
+                `;
+                
+                statusSpan.textContent = `Loaded ${validSightings} sightings`;
+                
+                // Fit map to show all markers if there are any
+                if (markers.length > 0) {
+                    const group = L.featureGroup(markers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                statusSpan.textContent = 'Error loading data';
+                statsDiv.textContent = `Error: ${error.message}`;
+                alert('Failed to load Orca sightings. Please check your internet connection and try again.');
+            } finally {
+                loadingDiv.classList.remove('active');
+                refreshBtn.disabled = false;
+            }
+        }
+        
+        // Create popup content for an observation
+        function createPopupContent(obs) {
+            let html = '<div>';
+            
+            // Add image if available
+            if (obs.photos && obs.photos.length > 0) {
+                html += `<img src="${obs.photos[0].url.replace('square', 'medium')}" 
+                         alt="Orca sighting" class="popup-image" 
+                         onerror="this.style.display='none'">`;
+            }
+            
+            html += `<div class="popup-title">Orca Sighting</div>`;
+            
+            // Date
+            if (obs.observed_on) {
+                const date = new Date(obs.observed_on);
+                html += `<div class="popup-detail"><strong>Date:</strong> ${date.toLocaleDateString()}</div>`;
+            }
+            
+            // Location
+            if (obs.place_guess) {
+                html += `<div class="popup-detail"><strong>Location:</strong> ${obs.place_guess}</div>`;
+            }
+            
+            // Observer
+            if (obs.user && obs.user.login) {
+                html += `<div class="popup-detail"><strong>Observer:</strong> ${obs.user.login}</div>`;
+            }
+            
+            // Quality grade
+            if (obs.quality_grade) {
+                const qualityMap = {
+                    'research': 'Research Grade',
+                    'needs_id': 'Needs ID',
+                    'casual': 'Casual'
+                };
+                html += `<div class="popup-detail"><strong>Quality:</strong> ${qualityMap[obs.quality_grade] || obs.quality_grade}</div>`;
+            }
+            
+            // Number of identifications
+            if (obs.identifications_count) {
+                html += `<div class="popup-detail"><strong>Identifications:</strong> ${obs.identifications_count}</div>`;
+            }
+            
+            // Link to iNaturalist
+            html += `<a href="https://www.inaturalist.org/observations/${obs.id}" 
+                     target="_blank" class="popup-link">View on iNaturalist →</a>`;
+            
+            html += '</div>';
+            return html;
+        }
+        
+        // Load data on page load
+        window.addEventListener('load', () => {
+            loadOrcaSightings();
+        });
+    </script>
+</body>
+</html>
