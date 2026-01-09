@@ -210,6 +210,13 @@
             crossorigin=""></script>
     
     <script>
+        // Constants
+        const ORCINUS_ORCA_TAXON_ID = 41630;
+        const INATURALIST_DOMAINS = [
+            'https://static.inaturalist.org/',
+            'https://inaturalist-open-data.s3.amazonaws.com/'
+        ];
+        
         // Initialize the map
         let map = L.map('map').setView([20, 0], 2);
         let markers = [];
@@ -229,13 +236,6 @@
             html: '🐋'
         });
         
-        // HTML escape function to prevent XSS
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
         // Validate and sanitize the results limit
         function validateResultsLimit(value) {
             const num = parseInt(value, 10);
@@ -243,6 +243,23 @@
                 return 100; // Default value
             }
             return num;
+        }
+        
+        // Validate location coordinates
+        function validateLocation(locationString) {
+            if (!locationString || typeof locationString !== 'string') {
+                return null;
+            }
+            const parts = locationString.split(',');
+            if (parts.length !== 2) {
+                return null;
+            }
+            const lat = parseFloat(parts[0]);
+            const lon = parseFloat(parts[1]);
+            if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                return null;
+            }
+            return { lat, lon };
         }
         
         // Function to load Orca sightings from iNaturalist API
@@ -264,9 +281,9 @@
             statusSpan.textContent = 'Loading...';
             
             try {
-                // iNaturalist API endpoint for Orcinus orca (taxon_id: 41630)
+                // iNaturalist API endpoint for Orcinus orca
                 // Using the observations endpoint with geolocation
-                const apiUrl = `https://api.inaturalist.org/v1/observations?taxon_id=41630&has[]=geo&order=desc&order_by=observed_on&per_page=${resultsLimit}&quality_grade=research,needs_id`;
+                const apiUrl = `https://api.inaturalist.org/v1/observations?taxon_id=${ORCINUS_ORCA_TAXON_ID}&has[]=geo&order=desc&order_by=observed_on&per_page=${resultsLimit}&quality_grade=research,needs_id`;
                 
                 const response = await fetch(apiUrl);
                 
@@ -286,14 +303,13 @@
                 // Add markers for each observation
                 let validSightings = 0;
                 observations.forEach(obs => {
-                    if (obs.location) {
-                        const [lat, lon] = obs.location.split(',').map(Number);
-                        
+                    const coords = validateLocation(obs.location);
+                    if (coords) {
                         // Create popup content
                         const popupContent = createPopupContent(obs);
                         
                         // Create marker
-                        const marker = L.marker([lat, lon], { icon: orcaIcon })
+                        const marker = L.marker([coords.lat, coords.lon], { icon: orcaIcon })
                             .bindPopup(popupContent, { maxWidth: 300 })
                             .addTo(map);
                         
@@ -360,8 +376,7 @@
                 const img = document.createElement('img');
                 const photoUrl = obs.photos[0].url;
                 // Validate URL is from iNaturalist domain
-                if (photoUrl && (photoUrl.startsWith('https://static.inaturalist.org/') || 
-                                  photoUrl.startsWith('https://inaturalist-open-data.s3.amazonaws.com/'))) {
+                if (photoUrl && INATURALIST_DOMAINS.some(domain => photoUrl.startsWith(domain))) {
                     img.src = photoUrl.replace('square', 'medium');
                     img.alt = 'Orca sighting';
                     img.className = 'popup-image';
