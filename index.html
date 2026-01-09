@@ -229,13 +229,30 @@
             html: '🐋'
         });
         
+        // HTML escape function to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Validate and sanitize the results limit
+        function validateResultsLimit(value) {
+            const num = parseInt(value, 10);
+            if (isNaN(num) || num < 10 || num > 200) {
+                return 100; // Default value
+            }
+            return num;
+        }
+        
         // Function to load Orca sightings from iNaturalist API
         async function loadOrcaSightings() {
             const loadingDiv = document.getElementById('loading');
             const refreshBtn = document.getElementById('refresh-btn');
             const statusSpan = document.getElementById('status');
             const statsDiv = document.getElementById('stats');
-            const resultsLimit = document.getElementById('results-limit').value;
+            const resultsLimitInput = document.getElementById('results-limit').value;
+            const resultsLimit = validateResultsLimit(resultsLimitInput);
             
             // Clear existing markers
             markers.forEach(marker => map.removeLayer(marker));
@@ -299,6 +316,7 @@
                     ${latestDate ? latestDate.toLocaleDateString() : 'N/A'}
                 `;
                 
+                statusSpan.style.color = '';
                 statusSpan.textContent = `Loaded ${validSightings} sightings`;
                 
                 // Fit map to show all markers if there are any
@@ -310,8 +328,10 @@
             } catch (error) {
                 console.error('Error loading data:', error);
                 statusSpan.textContent = 'Error loading data';
-                statsDiv.textContent = `Error: ${error.message}`;
-                alert('Failed to load Orca sightings. Please check your internet connection and try again.');
+                statsDiv.innerHTML = `<span style="color: #d32f2f;">Error: ${escapeHtml(error.message)}</span>`;
+                // Show error in a more user-friendly way
+                statusSpan.style.color = '#d32f2f';
+                statusSpan.textContent = '⚠️ Failed to load data. Please check your connection and try again.';
             } finally {
                 loadingDiv.classList.remove('active');
                 refreshBtn.disabled = false;
@@ -320,31 +340,61 @@
         
         // Create popup content for an observation
         function createPopupContent(obs) {
-            let html = '<div>';
+            const container = document.createElement('div');
             
             // Add image if available
             if (obs.photos && obs.photos.length > 0) {
-                html += `<img src="${obs.photos[0].url.replace('square', 'medium')}" 
-                         alt="Orca sighting" class="popup-image" 
-                         onerror="this.style.display='none'">`;
+                const img = document.createElement('img');
+                const photoUrl = obs.photos[0].url;
+                // Validate URL is from iNaturalist domain
+                if (photoUrl && (photoUrl.startsWith('https://static.inaturalist.org/') || 
+                                  photoUrl.startsWith('https://inaturalist-open-data.s3.amazonaws.com/'))) {
+                    img.src = photoUrl.replace('square', 'medium');
+                    img.alt = 'Orca sighting';
+                    img.className = 'popup-image';
+                    img.onerror = function() { this.style.display = 'none'; };
+                    container.appendChild(img);
+                }
             }
             
-            html += `<div class="popup-title">Orca Sighting</div>`;
+            // Title
+            const title = document.createElement('div');
+            title.className = 'popup-title';
+            title.textContent = 'Orca Sighting';
+            container.appendChild(title);
             
             // Date
             if (obs.observed_on) {
                 const date = new Date(obs.observed_on);
-                html += `<div class="popup-detail"><strong>Date:</strong> ${date.toLocaleDateString()}</div>`;
+                const dateDiv = document.createElement('div');
+                dateDiv.className = 'popup-detail';
+                const dateStrong = document.createElement('strong');
+                dateStrong.textContent = 'Date: ';
+                dateDiv.appendChild(dateStrong);
+                dateDiv.appendChild(document.createTextNode(date.toLocaleDateString()));
+                container.appendChild(dateDiv);
             }
             
             // Location
             if (obs.place_guess) {
-                html += `<div class="popup-detail"><strong>Location:</strong> ${obs.place_guess}</div>`;
+                const locationDiv = document.createElement('div');
+                locationDiv.className = 'popup-detail';
+                const locationStrong = document.createElement('strong');
+                locationStrong.textContent = 'Location: ';
+                locationDiv.appendChild(locationStrong);
+                locationDiv.appendChild(document.createTextNode(obs.place_guess));
+                container.appendChild(locationDiv);
             }
             
             // Observer
             if (obs.user && obs.user.login) {
-                html += `<div class="popup-detail"><strong>Observer:</strong> ${obs.user.login}</div>`;
+                const observerDiv = document.createElement('div');
+                observerDiv.className = 'popup-detail';
+                const observerStrong = document.createElement('strong');
+                observerStrong.textContent = 'Observer: ';
+                observerDiv.appendChild(observerStrong);
+                observerDiv.appendChild(document.createTextNode(obs.user.login));
+                container.appendChild(observerDiv);
             }
             
             // Quality grade
@@ -354,20 +404,38 @@
                     'needs_id': 'Needs ID',
                     'casual': 'Casual'
                 };
-                html += `<div class="popup-detail"><strong>Quality:</strong> ${qualityMap[obs.quality_grade] || obs.quality_grade}</div>`;
+                const qualityDiv = document.createElement('div');
+                qualityDiv.className = 'popup-detail';
+                const qualityStrong = document.createElement('strong');
+                qualityStrong.textContent = 'Quality: ';
+                qualityDiv.appendChild(qualityStrong);
+                qualityDiv.appendChild(document.createTextNode(qualityMap[obs.quality_grade] || obs.quality_grade));
+                container.appendChild(qualityDiv);
             }
             
             // Number of identifications
             if (obs.identifications_count) {
-                html += `<div class="popup-detail"><strong>Identifications:</strong> ${obs.identifications_count}</div>`;
+                const idDiv = document.createElement('div');
+                idDiv.className = 'popup-detail';
+                const idStrong = document.createElement('strong');
+                idStrong.textContent = 'Identifications: ';
+                idDiv.appendChild(idStrong);
+                idDiv.appendChild(document.createTextNode(obs.identifications_count));
+                container.appendChild(idDiv);
             }
             
             // Link to iNaturalist
-            html += `<a href="https://www.inaturalist.org/observations/${obs.id}" 
-                     target="_blank" class="popup-link">View on iNaturalist →</a>`;
+            if (obs.id) {
+                const link = document.createElement('a');
+                link.href = `https://www.inaturalist.org/observations/${encodeURIComponent(obs.id)}`;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.className = 'popup-link';
+                link.textContent = 'View on iNaturalist →';
+                container.appendChild(link);
+            }
             
-            html += '</div>';
-            return html;
+            return container;
         }
         
         // Load data on page load
