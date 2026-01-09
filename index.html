@@ -310,11 +310,17 @@
                 const latestDate = dates.length > 0 ? new Date(Math.max(...dates)) : null;
                 const oldestDate = dates.length > 0 ? new Date(Math.min(...dates)) : null;
                 
-                statsDiv.innerHTML = `
-                    <strong>Sightings loaded:</strong> ${validSightings} observations | 
-                    <strong>Date range:</strong> ${oldestDate ? oldestDate.toLocaleDateString() : 'N/A'} - 
-                    ${latestDate ? latestDate.toLocaleDateString() : 'N/A'}
-                `;
+                // Update stats using DOM manipulation
+                statsDiv.textContent = '';
+                const statsStrong1 = document.createElement('strong');
+                statsStrong1.textContent = 'Sightings loaded:';
+                statsDiv.appendChild(statsStrong1);
+                statsDiv.appendChild(document.createTextNode(` ${validSightings} observations | `));
+                
+                const statsStrong2 = document.createElement('strong');
+                statsStrong2.textContent = 'Date range:';
+                statsDiv.appendChild(statsStrong2);
+                statsDiv.appendChild(document.createTextNode(` ${oldestDate ? oldestDate.toLocaleDateString() : 'N/A'} - ${latestDate ? latestDate.toLocaleDateString() : 'N/A'}`));
                 
                 statusSpan.style.color = '';
                 statusSpan.textContent = `Loaded ${validSightings} sightings`;
@@ -328,7 +334,14 @@
             } catch (error) {
                 console.error('Error loading data:', error);
                 statusSpan.textContent = 'Error loading data';
-                statsDiv.innerHTML = `<span style="color: #d32f2f;">Error: ${escapeHtml(error.message)}</span>`;
+                
+                // Show error in stats using DOM manipulation
+                statsDiv.textContent = '';
+                const errorSpan = document.createElement('span');
+                errorSpan.style.color = '#d32f2f';
+                errorSpan.textContent = `Error: ${error.message}`;
+                statsDiv.appendChild(errorSpan);
+                
                 // Show error in a more user-friendly way
                 statusSpan.style.color = '#d32f2f';
                 statusSpan.textContent = '⚠️ Failed to load data. Please check your connection and try again.';
